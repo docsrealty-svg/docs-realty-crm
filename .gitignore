@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env*.local
+*.log
+*.sqlite
+tsconfig.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+.vercel
