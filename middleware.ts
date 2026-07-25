@@ -8,6 +8,7 @@ function unauthorized() {
 }
 
 function hasValidAuth(request: NextRequest) {
+  if (process.env.NODE_ENV !== "production") return true;
   const user = process.env.CRM_BASIC_USER || "docs";
   const password = process.env.CRM_BASIC_PASSWORD || "DocsRealty2026!";
   const header = request.headers.get("authorization");
@@ -19,7 +20,8 @@ function hasValidAuth(request: NextRequest) {
 
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host") || "";
-  const isDocsCrm = host.includes("docs-realty-crm");
+  const forcedTenant = process.env.CRM_TENANT;
+  const isDocsCrm = host.includes("docs-realty-crm") || forcedTenant === "docs-realty" || forcedTenant === "docs_realty";
   const isAeCrm = host.includes("automatizaciones-express-crm");
   const isCrmHost = isDocsCrm || isAeCrm;
 

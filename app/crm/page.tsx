@@ -111,12 +111,13 @@ type CrmError = {
 function crmConfig() {
   const host = headers().get("host") || "";
   const forcedTenant = process.env.CRM_TENANT;
-  const isDocs = forcedTenant === "docs_realty" || host.includes("docs-realty-crm");
+  const isDocs = forcedTenant === "docs_realty" || forcedTenant === "docs-realty" || host.includes("docs-realty-crm");
 
   return {
     tenant: isDocs ? "docs_realty" : "ae_ventas",
     brand: isDocs ? "DOCS REALTY CRM" : "Automatizaciones Express CRM",
     spark: isDocs ? "D" : "AE",
+    logo: isDocs ? "/docs-logo.png" : null,
     title: isDocs ? "Centro comercial" : "Centro comercial",
     publicUrl: isDocs ? "https://docs-realty-crm.vercel.app" : "https://automatizaciones-express.vercel.app",
     evolutionInstance: isDocs
@@ -1003,15 +1004,16 @@ export default async function CrmPage({
     }),
   }));
 
+  const iconProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   const navItems = [
-    { key: "chats", label: "C", title: "Chats" },
-    { key: "embudo", label: "E", title: "Embudo" },
-    { key: "vendedores", label: "V", title: "Vendedores" },
-    { key: "agenda", label: "A", title: "Agenda" },
-    { key: "seguimiento", label: "S", title: "Seguimiento" },
-    { key: "reportes", label: "R", title: "Reportes" },
-    { key: "meta-ads", label: "M", title: "Meta Ads" },
-    { key: "config", label: "G", title: "Config" },
+    { key: "chats", title: "Chats", icon: <svg {...iconProps}><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z" /></svg> },
+    { key: "embudo", title: "Embudo", icon: <svg {...iconProps}><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z" /></svg> },
+    { key: "vendedores", title: "Vendedores", icon: <svg {...iconProps}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg> },
+    { key: "agenda", title: "Agenda", icon: <svg {...iconProps}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg> },
+    { key: "seguimiento", title: "Seguimiento", icon: <svg {...iconProps}><path d="M4 21V4a1 1 0 0 1 1-1h11l-2 5 2 5H5" /></svg> },
+    { key: "reportes", title: "Reportes", icon: <svg {...iconProps}><path d="M3 3v18h18M7 14l4-4 4 4 5-6" /></svg> },
+    { key: "meta-ads", title: "Meta Ads", icon: <svg {...iconProps}><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15 8a4 4 0 0 1 0 8" /></svg> },
+    { key: "config", title: "Config", icon: <svg {...iconProps}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg> },
   ];
 
   return (
@@ -1019,18 +1021,27 @@ export default async function CrmPage({
       <style>{`a[aria-label="Hablar por WhatsApp"]{display:none!important}`}</style>
 
       <aside className={styles.rail} aria-label="Navegacion CRM">
-        <div className={styles.spark}>{config.spark}</div>
-        {navItems.map((item) => (
-          <a
-            className={`${styles.railButton} ${view === item.key ? styles.railButtonActive : ""}`}
-            href={buildCrmUrl({ view: item.key })}
-            aria-label={item.title}
-            title={item.title}
-            key={item.key}
-          >
-            {item.label}
-          </a>
-        ))}
+        <div className={styles.railBrand}>
+          {config.logo ? (
+            <img src={config.logo} alt={config.brand} className={styles.railLogo} />
+          ) : (
+            <div className={styles.spark}>{config.spark}</div>
+          )}
+        </div>
+        <nav className={styles.railNav}>
+          {navItems.map((item) => (
+            <a
+              className={`${styles.railButton} ${view === item.key ? styles.railButtonActive : ""}`}
+              href={buildCrmUrl({ view: item.key })}
+              aria-label={item.title}
+              title={item.title}
+              key={item.key}
+            >
+              <span className={styles.railIcon}>{item.icon}</span>
+              <span className={styles.railLabel}>{item.title}</span>
+            </a>
+          ))}
+        </nav>
       </aside>
 
       <section className={styles.workspace}>
