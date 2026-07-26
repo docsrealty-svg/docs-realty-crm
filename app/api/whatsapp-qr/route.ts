@@ -4,11 +4,25 @@ export const dynamic = "force-dynamic";
 
 type EvolutionPayload = Record<string, unknown>;
 
-function evolutionConfig() {
+const DEFAULT_INSTANCE_ENV = [
+  "EVOLUTION_INSTANCE_DOCS",
+  "EVOLUTION_INSTANCE_PRUEBA",
+  "EVOLUTION_INSTANCE_AE",
+];
+
+function defaultInstance(): string {
+  for (const name of DEFAULT_INSTANCE_ENV) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return "";
+}
+
+function evolutionConfig(instanceOverride?: string | null) {
   return {
     apiUrl: process.env.EVOLUTION_API_URL || "",
     apiKey: process.env.EVOLUTION_API_KEY || "",
-    instance: process.env.EVOLUTION_INSTANCE_AE || process.env.EVOLUTION_INSTANCE_PRUEBA || "ae_ventas",
+    instance: instanceOverride || defaultInstance(),
   };
 }
 
@@ -55,9 +69,9 @@ function svg(message: string, detail = "") {
   return `data:image/svg+xml;charset=utf-8,${body}`;
 }
 
-async function getEvolutionQr() {
-  const { apiUrl, apiKey, instance } = evolutionConfig();
-  if (!apiUrl || !apiKey) {
+async function getEvolutionQr(instanceOverride?: string | null) {
+  const { apiUrl, apiKey, instance } = evolutionConfig(instanceOverride);
+  if (!apiUrl || !apiKey || !instance) {
     return { state: "missing_config", image: svg("Sin configurar", "Faltan variables Evolution"), pairingCode: "" };
   }
 
@@ -88,7 +102,8 @@ async function getEvolutionQr() {
 
 export async function GET(request: NextRequest) {
   try {
-    const result = await getEvolutionQr();
+    const instanceParam = request.nextUrl.searchParams.get("instance");
+    const result = await getEvolutionQr(instanceParam);
     if (request.nextUrl.searchParams.get("format") === "json") {
       return NextResponse.json({ state: result.state, pairingCode: result.pairingCode, ok: true });
     }
@@ -115,9 +130,10 @@ export async function GET(request: NextRequest) {
 
 // Reset the WhatsApp session: force logout (both verbs) and restart the instance,
 // so Evolution drops a stale/zombie socket and starts emitting a fresh QR.
-export async function POST() {
-  const { apiUrl, apiKey, instance } = evolutionConfig();
-  if (!apiUrl || !apiKey) {
+export async function POST(request: NextRequest) {
+  const instanceParam = request.nextUrl.searchParams.get("instance");
+  const { apiUrl, apiKey, instance } = evolutionConfig(instanceParam);
+  if (!apiUrl || !apiKey || !instance) {
     return NextResponse.json({ ok: false, error: "missing_evolution_config" }, { status: 400 });
   }
 

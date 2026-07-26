@@ -57,6 +57,19 @@ type EvolutionStatus = {
   label: string;
 };
 
+type WhatsappLine = {
+  id: string;
+  instance_name: string;
+  label: string;
+  project_key: string | null;
+  active: boolean | null;
+};
+
+type ProjectBrain = {
+  project_key: string;
+  project_name: string;
+};
+
 type Assignment = {
   id: string;
   project_key: string | null;
@@ -114,7 +127,7 @@ function crmConfig() {
   const isDocs = forcedTenant === "docs_realty" || forcedTenant === "docs-realty" || host.includes("docs-realty-crm");
 
   return {
-    tenant: isDocs ? "docs_realty" : "ae_ventas",
+    tenant: isDocs ? "docs-realty" : "ae_ventas",
     brand: isDocs ? "DOCS REALTY CRM" : "Automatizaciones Express CRM",
     spark: isDocs ? "D" : "AE",
     logo: isDocs ? "/docs-logo.png" : null,
@@ -176,11 +189,11 @@ async function supabaseSelect<T>(table: string, query: string): Promise<T[]> {
   }
 }
 
-async function getEvolutionStatus(): Promise<EvolutionStatus> {
+async function getEvolutionStatus(instanceOverride?: string): Promise<EvolutionStatus> {
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = crmConfig().evolutionInstance;
-  if (!apiUrl || !apiKey) return { state: "missing_config", label: "Sin configurar" };
+  const instance = instanceOverride || crmConfig().evolutionInstance;
+  if (!apiUrl || !apiKey || !instance) return { state: "missing_config", label: "Sin configurar" };
 
   try {
     const response = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
@@ -741,12 +754,12 @@ async function cleanTestEventsAction() {
   redirect(buildCrmUrl({ view: "config" }));
 }
 
-async function disconnectWhatsAppAction() {
+async function disconnectWhatsAppAction(formData: FormData) {
   "use server";
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = crmConfig().evolutionInstance;
-  if (!apiUrl || !apiKey) return;
+  const instance = String(formData.get("instance") || "") || crmConfig().evolutionInstance;
+  if (!apiUrl || !apiKey || !instance) return;
   const headers = { apikey: apiKey };
   // Force logout (both verbs) then restart the instance so a stale/zombie socket
   // is dropped and Evolution starts emitting a fresh QR on the next load.
@@ -771,11 +784,11 @@ async function disconnectWhatsAppAction() {
   redirect("/crm?view=config");
 }
 
-async function restartWhatsAppAction() {
+async function restartWhatsAppAction(formData: FormData) {
   "use server";
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
-  const instance = crmConfig().evolutionInstance;
+  const instance = String(formData.get("instance") || "") || crmConfig().evolutionInstance;
   const headers = apiKey ? { apikey: apiKey } : undefined;
 
   // 1) Reset a nivel Evolution (logout + restart de la instancia).
@@ -825,6 +838,36 @@ async function restartWhatsAppAction() {
   }
   revalidatePath("/crm");
   redirect("/crm?view=config");
+}
+
+async function updateLineBrainAction(formData: FormData) {
+  "use server";
+  const lineId = String(formData.get("line_id") || "");
+  const projectKey = String(formData.get("project_key") || "");
+  if (!lineId || !projectKey) return;
+  await supabasePatch("docs_whatsapp_lines", `id=eq.${lineId}`, {
+    project_key: projectKey,
+    updated_at: new Date().toISOString(),
+  });
+  revalidatePath("/crm");
+  redirect(buildCrmUrl({ view: "config" }));
+}
+
+async function createWhatsappLineAction(formData: FormData) {
+  "use server";
+  const label = String(formData.get("label") || "").trim();
+  const instanceName = String(formData.get("instance_name") || "").trim();
+  const projectKey = String(formData.get("project_key") || "");
+  if (!label || !instanceName || !projectKey) return;
+  await supabaseInsert("docs_whatsapp_lines", {
+    tenant_key: tenantKey(),
+    instance_name: instanceName,
+    label,
+    project_key: projectKey,
+    active: true,
+  });
+  revalidatePath("/crm");
+  redirect(buildCrmUrl({ view: "config" }));
 }
 
 function formatTime(value: string | null) {
@@ -922,6 +965,9 @@ export default async function CrmPage({
   const metaReports = await supabaseSelect<ReportItem>("docs_reports", `select=*&tenant_key=eq.${tenantKey()}&report_type=eq.meta_ads_config&order=created_at.desc&limit=8`);
   const errorLogs = await supabaseSelect<CrmError>("docs_errors", "select=*&order=created_at.desc&limit=8");
   const evolutionStatus = await getEvolutionStatus();
+  const whatsappLines = await supabaseSelect<WhatsappLine>("docs_whatsapp_lines", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.asc&limit=20`);
+  const projectBrains = await supabaseSelect<ProjectBrain>("docs_project_knowledge", `select=project_key,project_name&tenant_key=eq.${tenantKey()}&order=project_name.asc&limit=20`);
+  const lineStatuses = await Promise.all(whatsappLines.map((line) => getEvolutionStatus(line.instance_name)));
   const bufferEvents = allBufferEvents.filter((event) => !isTestPhone(event.customer_phone));
 
   const leads = allLeads.filter((lead) => {
@@ -1566,32 +1612,65 @@ export default async function CrmPage({
               <b>{errorLogs.length}</b>
             </header>
             <div className={styles.rowItem}>
-              <strong>WhatsApp QR</strong>
-              <span>{evolutionStatus.label}</span>
+              <strong>Lineas de WhatsApp</strong>
+              <span>{whatsappLines.length} numero(s) conectados a este CRM. Cada uno usa el cerebro que elijas, y podes agregar mas cuando el cliente sume numeros nuevos.</span>
             </div>
-            <section className={styles.qrCard} aria-label="Conexion WhatsApp QR">
-              <div className={styles.qrHeader}>
-                <div>
-                  <span>WhatsApp QR</span>
-                  <strong>{evolutionStatus.label}</strong>
-                </div>
-                <a className={styles.qrRefresh} href={buildCrmUrl({ view: "config" })}>Actualizar</a>
-              </div>
-              <img src="/api/whatsapp-qr" alt="QR para conectar WhatsApp por Evolution API" />
-              <form action={restartWhatsAppAction}>
-                <button className={styles.disconnectButton} type="submit" style={{ background: "#1f9d62", color: "#fff", fontWeight: 700 }}>
-                  Reiniciar WhatsApp (nuevo QR)
-                </button>
-              </form>
-              <form action={disconnectWhatsAppAction}>
-                <button className={styles.disconnectButton} type="submit">Desconectar WhatsApp</button>
-              </form>
-              <small>
-                {evolutionStatus.state === "open"
-                  ? "Si quieren cambiar el telefono, primero hay que desconectar la instancia y volver a escanear."
-                  : "Escanear desde WhatsApp > Dispositivos vinculados."}
-              </small>
-            </section>
+            <div className={styles.qrGrid}>
+              {whatsappLines.map((line, i) => {
+                const status = lineStatuses[i] || { state: "unknown", label: "Sin datos" };
+                return (
+                  <section className={styles.qrCard} aria-label={`Conexion WhatsApp ${line.label}`} key={line.id}>
+                    <div className={styles.qrHeader}>
+                      <div>
+                        <span>{line.label}</span>
+                        <strong>{status.label}</strong>
+                      </div>
+                      <a className={styles.qrRefresh} href={buildCrmUrl({ view: "config" })}>Actualizar</a>
+                    </div>
+                    <img src={`/api/whatsapp-qr?instance=${encodeURIComponent(line.instance_name)}`} alt={`QR para conectar ${line.label}`} />
+                    <form className={styles.compactForm} action={updateLineBrainAction}>
+                      <input type="hidden" name="line_id" value={line.id} />
+                      <select name="project_key" defaultValue={line.project_key || ""} aria-label={`Cerebro de ${line.label}`}>
+                        {projectBrains.map((brain) => (
+                          <option value={brain.project_key} key={brain.project_key}>{brain.project_name}</option>
+                        ))}
+                      </select>
+                      <button className={styles.secondaryButton} type="submit">Guardar cerebro</button>
+                    </form>
+                    <form action={restartWhatsAppAction}>
+                      <input type="hidden" name="instance" value={line.instance_name} />
+                      <button className={styles.disconnectButton} type="submit" style={{ background: "#1f9d62", color: "#fff", fontWeight: 700 }}>
+                        Reiniciar (nuevo QR)
+                      </button>
+                    </form>
+                    <form action={disconnectWhatsAppAction}>
+                      <input type="hidden" name="instance" value={line.instance_name} />
+                      <button className={styles.disconnectButton} type="submit">Desconectar</button>
+                    </form>
+                    <small>
+                      {status.state === "open"
+                        ? "Para cambiar el telefono, desconecta primero y volves a escanear."
+                        : "Escanear desde WhatsApp > Dispositivos vinculados."}
+                    </small>
+                  </section>
+                );
+              })}
+            </div>
+            <div className={styles.rowItem}>
+              <strong>Agregar numero nuevo</strong>
+              <span>Para cuando el cliente sume otro numero mas adelante (una casa, otro desarrollo, etc).</span>
+            </div>
+            <form className={styles.metaForm} action={createWhatsappLineAction}>
+              <input name="label" placeholder="Nombre (ej: Casa Vila Marina)" required />
+              <input name="instance_name" placeholder="ID interno (ej: docs-vilamarina)" required />
+              <select name="project_key" defaultValue="" required aria-label="Cerebro del numero nuevo">
+                <option value="" disabled>Elegir cerebro</option>
+                {projectBrains.map((brain) => (
+                  <option value={brain.project_key} key={brain.project_key}>{brain.project_name}</option>
+                ))}
+              </select>
+              <button type="submit">Agregar numero</button>
+            </form>
             <div className={styles.rowItem}>
               <strong>Bot global</strong>
               <span>{globalBotPaused ? "pausado" : "activo"}</span>

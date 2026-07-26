@@ -607,6 +607,12 @@
   font-weight: 700;
 }
 
+.qrGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
 .qrCard {
   display: grid;
   gap: 10px;
