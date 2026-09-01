@@ -1031,9 +1031,17 @@ export default async function CrmPage({
       : activeLead
         ? `lead_id=eq.${activeLead.id}`
         : "";
-  const conversations = conversationFilter
-    ? await supabaseSelect<Conversation>("docs_conversations", `select=*&${conversationFilter}&order=created_at.asc&limit=120`)
+  // Se piden los 120 MAS RECIENTES (desc) y despues se dan vuelta: con asc, un chat de
+  // mas de 120 mensajes mostraba los mas viejos y nunca los nuevos.
+  const conversationRows = conversationFilter
+    ? await supabaseSelect<Conversation>("docs_conversations", `select=*&${conversationFilter}&order=created_at.desc&limit=120`)
     : [];
+  // n8n graba la respuesta del bot unos milisegundos ANTES que el mensaje entrante del
+  // mismo turno (van por ramas paralelas), asi que por created_at puro la respuesta
+  // aparecia arriba de la pregunta. Se le suma 1,5s a los outbound solo para ordenar.
+  const ordenDe = (m: Conversation) =>
+    new Date(m.created_at || 0).getTime() + (m.direction === "outbound" ? 1500 : 0);
+  const conversations = [...conversationRows].sort((a, b) => ordenDe(a) - ordenDe(b));
   const eventsForPhone = bufferEvents.filter((event) => event.customer_phone === activePhone).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
 
   const today = new Date().toISOString().slice(0, 10);
