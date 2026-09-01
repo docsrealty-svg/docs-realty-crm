@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import ScrollAlFinal from "./ScrollAlFinal";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import styles from "./page.module.css";
@@ -1266,7 +1267,8 @@ export default async function CrmPage({
               )}
             </div>
 
-            <div className={styles.thread}>
+            <div className={styles.thread} id="hilo-chat">
+              <ScrollAlFinal selector="#hilo-chat" clave={`${activeLead?.id || ""}-${activePhone}-${conversations.length}`} />
               <span className={styles.dayPill}>{activeLead ? "Conversacion CRM" : "Eventos WhatsApp"}</span>
               {/* Si un hilo no tiene respuestas, decimos por que en vez de dejarlo mudo. */}
               {(globalBotPaused || phoneBotPaused) && (
