@@ -1268,6 +1268,19 @@ export default async function CrmPage({
 
             <div className={styles.thread}>
               <span className={styles.dayPill}>{activeLead ? "Conversacion CRM" : "Eventos WhatsApp"}</span>
+              {/* Si un hilo no tiene respuestas, decimos por que en vez de dejarlo mudo. */}
+              {(globalBotPaused || phoneBotPaused) && (
+                <div className={styles.emptyState}>
+                  <strong>{globalBotPaused ? "El bot global esta pausado" : "El bot esta pausado para este numero"}</strong>
+                  <p>No va a responder hasta que lo reactives con el boton de arriba.</p>
+                </div>
+              )}
+              {conversations.length > 0 && !conversations.some((m) => m.direction === "outbound") && (
+                <div className={styles.emptyState}>
+                  <strong>Este chat no tiene respuestas registradas</strong>
+                  <p>Hasta el 01/09/2026 las respuestas del bot no se guardaban: las de antes de esa fecha solo existen en WhatsApp.</p>
+                </div>
+              )}
               {conversations.length > 0 ? (
                 conversations.map((message) => (
                   <div className={`${styles.bubbleRow} ${message.direction === "outbound" ? styles.agent : styles.client}`} key={message.id}>
