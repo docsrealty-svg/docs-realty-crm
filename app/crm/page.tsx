@@ -25,6 +25,7 @@ type Lead = {
 type Conversation = {
   id: string;
   lead_id: string | null;
+  customer_phone: string | null;
   direction: string | null;
   message_text: string | null;
   created_at: string | null;
@@ -199,6 +200,8 @@ async function getEvolutionStatus(instanceOverride?: string): Promise<EvolutionS
     const response = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
       headers: { apikey: apiKey },
       cache: "no-store",
+      // Sin esto, si Evolution esta lento el CRM entero se queda esperando.
+      signal: AbortSignal.timeout(3500),
     });
     const data = await response.json();
     const state = String(data?.instance?.state || "unknown");
@@ -955,18 +958,52 @@ export default async function CrmPage({
   const view = allowedViews.includes(searchParams?.view || "") ? searchParams?.view || "chats" : "chats";
   const calendarMode = ["dia", "semana", "mes", "ano"].includes(searchParams?.cal || "") ? searchParams?.cal || "semana" : "semana";
 
-  const allLeads = await supabaseSelect<Lead>("docs_leads", `select=*&tenant_key=eq.${tenantKey()}&order=last_contact_at.desc&limit=120`);
-  const allBufferEvents = await supabaseSelect<BufferEvent>("docs_message_buffer_events", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=160`);
-  const botControls = await supabaseSelect<BotControl>("docs_bot_controls", `select=*&tenant_key=eq.${tenantKey()}&order=updated_at.desc&limit=200`);
-  const assignments = await supabaseSelect<Assignment>("docs_lead_assignments", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=80`);
-  const meetingRequests = await supabaseSelect<MeetingRequest>("docs_visit_requests", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=80`);
-  const approvalQueue = await supabaseSelect<ApprovalItem>("docs_approval_queue", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=80`);
-  const reports = await supabaseSelect<ReportItem>("docs_reports", `select=*&tenant_key=eq.${tenantKey()}&report_type=eq.weekly_commercial&order=created_at.desc&limit=12`);
-  const metaReports = await supabaseSelect<ReportItem>("docs_reports", `select=*&tenant_key=eq.${tenantKey()}&report_type=eq.meta_ads_config&order=created_at.desc&limit=8`);
-  const errorLogs = await supabaseSelect<CrmError>("docs_errors", "select=*&order=created_at.desc&limit=8");
-  const evolutionStatus = await getEvolutionStatus();
-  const whatsappLines = await supabaseSelect<WhatsappLine>("docs_whatsapp_lines", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.asc&limit=20`);
-  const projectBrains = await supabaseSelect<ProjectBrain>("docs_project_knowledge", `select=project_key,project_name&tenant_key=eq.${tenantKey()}&order=project_name.asc&limit=20`);
+  // Antes esto eran 13 consultas encadenadas con await: el navegador esperaba la suma de
+  // todas en cada click. Ahora van en paralelo y las que son de una sola vista solo se
+  // piden cuando esa vista esta abierta.
+  const necesitaSeguimiento = view === "seguimiento";
+  const necesitaMetaAds = view === "meta-ads";
+  const necesitaConfig = view === "config";
+  const vacio = <T,>() => Promise.resolve([] as T[]);
+
+  const [
+    allLeads,
+    allBufferEvents,
+    botControls,
+    assignments,
+    meetingRequests,
+    approvalQueue,
+    reports,
+    metaReports,
+    errorLogs,
+    evolutionStatus,
+    whatsappLines,
+    projectBrains,
+  ] = await Promise.all([
+    supabaseSelect<Lead>("docs_leads", `select=*&tenant_key=eq.${tenantKey()}&order=last_contact_at.desc&limit=120`),
+    supabaseSelect<BufferEvent>("docs_message_buffer_events", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=160`),
+    supabaseSelect<BotControl>("docs_bot_controls", `select=*&tenant_key=eq.${tenantKey()}&order=updated_at.desc&limit=200`),
+    supabaseSelect<Assignment>("docs_lead_assignments", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=80`),
+    supabaseSelect<MeetingRequest>("docs_visit_requests", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=80`),
+    necesitaSeguimiento
+      ? supabaseSelect<ApprovalItem>("docs_approval_queue", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.desc&limit=80`)
+      : vacio<ApprovalItem>(),
+    necesitaSeguimiento
+      ? supabaseSelect<ReportItem>("docs_reports", `select=*&tenant_key=eq.${tenantKey()}&report_type=eq.weekly_commercial&order=created_at.desc&limit=12`)
+      : vacio<ReportItem>(),
+    necesitaMetaAds
+      ? supabaseSelect<ReportItem>("docs_reports", `select=*&tenant_key=eq.${tenantKey()}&report_type=eq.meta_ads_config&order=created_at.desc&limit=8`)
+      : vacio<ReportItem>(),
+    necesitaConfig ? supabaseSelect<CrmError>("docs_errors", "select=*&order=created_at.desc&limit=8") : vacio<CrmError>(),
+    getEvolutionStatus(),
+    necesitaConfig
+      ? supabaseSelect<WhatsappLine>("docs_whatsapp_lines", `select=*&tenant_key=eq.${tenantKey()}&order=created_at.asc&limit=20`)
+      : vacio<WhatsappLine>(),
+    necesitaConfig
+      ? supabaseSelect<ProjectBrain>("docs_project_knowledge", `select=project_key,project_name&tenant_key=eq.${tenantKey()}&order=project_name.asc&limit=20`)
+      : vacio<ProjectBrain>(),
+  ]);
+  // Un estado de Evolution por linea: solo en Config, que es donde se muestran.
   const lineStatuses = await Promise.all(whatsappLines.map((line) => getEvolutionStatus(line.instance_name)));
   const bufferEvents = allBufferEvents.filter((event) => !isTestPhone(event.customer_phone));
 
@@ -982,8 +1019,19 @@ export default async function CrmPage({
   const activeLead = leads.find((lead) => lead.id === searchParams?.lead) || leads[0] || null;
   const eventGroups = latestEventsByPhone(bufferEvents);
   const activePhone = searchParams?.phone || activeLead?.customer_phone || eventGroups[0]?.customer_phone || "";
-  const conversations = activeLead
-    ? await supabaseSelect<Conversation>("docs_conversations", `select=*&lead_id=eq.${activeLead.id}&order=created_at.asc&limit=120`)
+  // El nodo de n8n que registra la respuesta del bot NO escribe lead_id (cuelga del envio
+  // de Evolution, donde no puede resolverlo), asi que filtrar por lead_id dejaba afuera
+  // justo la mitad del bot. El telefono si lo escriben las dos puntas: filtramos por ahi.
+  const conversationPhone = (activeLead?.customer_phone || activePhone || "").replace(/[^0-9]/g, "");
+  const conversationFilter = conversationPhone && activeLead
+    ? `or=(customer_phone.eq.${conversationPhone},lead_id.eq.${activeLead.id})`
+    : conversationPhone
+      ? `customer_phone=eq.${conversationPhone}`
+      : activeLead
+        ? `lead_id=eq.${activeLead.id}`
+        : "";
+  const conversations = conversationFilter
+    ? await supabaseSelect<Conversation>("docs_conversations", `select=*&${conversationFilter}&order=created_at.asc&limit=120`)
     : [];
   const eventsForPhone = bufferEvents.filter((event) => event.customer_phone === activePhone).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
 
