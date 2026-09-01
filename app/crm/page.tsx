@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import styles from "./page.module.css";
@@ -1177,9 +1178,9 @@ export default async function CrmPage({
               <input name="q" defaultValue={searchParams?.q || ""} aria-label="Buscar leads" placeholder="Buscar telefono, rubro o etiqueta" />
             </form>
             <div className={styles.filters}>
-              <a className={filter === "todos" ? styles.filterActive : ""} href={buildCrmUrl({ view: "chats" })}>Todos</a>
-              <a className={filter === "hot" ? styles.filterActive : ""} href={buildCrmUrl({ view: "chats", filter: "hot" })}>Hot</a>
-              <a className={filter === "sin-vendedor" ? styles.filterActive : ""} href={buildCrmUrl({ view: "chats", filter: "sin-vendedor" })}>Sin vendedor</a>
+              <Link className={filter === "todos" ? styles.filterActive : ""} href={buildCrmUrl({ view: "chats" })}>Todos</Link>
+              <Link className={filter === "hot" ? styles.filterActive : ""} href={buildCrmUrl({ view: "chats", filter: "hot" })}>Hot</Link>
+              <Link className={filter === "sin-vendedor" ? styles.filterActive : ""} href={buildCrmUrl({ view: "chats", filter: "sin-vendedor" })}>Sin vendedor</Link>
             </div>
             <div className={styles.leadList}>
               {leads.length > 0 ? (
@@ -1370,7 +1371,7 @@ export default async function CrmPage({
           {stageCounts.map((stage) => (
             <article className={styles.column} key={stage.key}>
               <header>
-                <a href={buildCrmUrl({ stage: stage.key })}>{stage.label}</a>
+                <Link href={buildCrmUrl({ stage: stage.key })}>{stage.label}</Link>
                 <b>{stage.count}</b>
               </header>
               {allLeads
@@ -1378,10 +1379,10 @@ export default async function CrmPage({
                 .slice(0, 8)
                 .map((lead) => (
                   <div className={styles.pipelineCard} key={lead.id}>
-                    <a href={buildCrmUrl({ view: "chats", lead: lead.id, stage: stage.key })}>
+                    <Link href={buildCrmUrl({ view: "chats", lead: lead.id, stage: stage.key })}>
                       <strong>{displayName(lead)}</strong>
                       <small>{lead.assigned_vendor || "sin vendedor"}</small>
-                    </a>
+                    </Link>
                     <form className={styles.compactForm} action={changeStageAction}>
                       <input type="hidden" name="lead_id" value={lead.id} />
                       <select name="stage" defaultValue={lead.stage || "lead_nuevo"} aria-label="Mover lead">
@@ -1467,10 +1468,10 @@ export default async function CrmPage({
               <button type="submit">Crear reunion</button>
             </form>
             <nav className={styles.calendarTabs} aria-label="Vistas de agenda">
-              <a className={calendarMode === "dia" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "dia" })}>Dia</a>
-              <a className={calendarMode === "semana" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "semana" })}>Semana</a>
-              <a className={calendarMode === "mes" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "mes" })}>Mes</a>
-              <a className={calendarMode === "ano" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "ano" })}>Ano</a>
+              <Link className={calendarMode === "dia" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "dia" })}>Dia</Link>
+              <Link className={calendarMode === "semana" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "semana" })}>Semana</Link>
+              <Link className={calendarMode === "mes" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "mes" })}>Mes</Link>
+              <Link className={calendarMode === "ano" ? styles.calendarTabActive : ""} href={buildCrmUrl({ view: "agenda", cal: "ano" })}>Ano</Link>
             </nav>
             <section className={styles.calendarBoard} aria-label="Calendario CRM">
               {calendarMode === "dia" && (
@@ -1673,7 +1674,7 @@ export default async function CrmPage({
                         <span>{line.label}</span>
                         <strong>{status.label}</strong>
                       </div>
-                      <a className={styles.qrRefresh} href={buildCrmUrl({ view: "config" })}>Actualizar</a>
+                      <Link className={styles.qrRefresh} href={buildCrmUrl({ view: "config" })}>Actualizar</Link>
                     </div>
                     <img src={`/api/whatsapp-qr?instance=${encodeURIComponent(line.instance_name)}`} alt={`QR para conectar ${line.label}`} />
                     <form className={styles.compactForm} action={updateLineBrainAction}>
