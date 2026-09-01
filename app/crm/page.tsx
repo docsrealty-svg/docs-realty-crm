@@ -293,6 +293,35 @@ async function getVendorByName(vendorName: string) {
   return vendors[0] || null;
 }
 
+/**
+ * La cuenta esta en modo LID: WhatsApp guarda los chats como "<id>@lid" y si se
+ * envia al numero de telefono, Evolution acepta el mensaje pero NUNCA lo entrega.
+ * Buscamos el @lid real del contacto a partir de su telefono; si no aparece,
+ * caemos al telefono (cuentas que no estan en LID si lo aceptan).
+ */
+async function resolverDestinoWhatsapp(cleanPhone: string): Promise<string> {
+  const apiUrl = process.env.EVOLUTION_API_URL;
+  const apiKey = process.env.EVOLUTION_API_KEY;
+  const instance = crmConfig().evolutionInstance;
+  if (!apiUrl || !apiKey || !instance) return cleanPhone;
+
+  try {
+    const response = await fetch(`${apiUrl}/chat/findMessages/${instance}`, {
+      method: "POST",
+      headers: { apikey: apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ where: { key: { remoteJidAlt: `${cleanPhone}@s.whatsapp.net` } }, limit: 1 }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) return cleanPhone;
+    const data = (await response.json()) as { messages?: { records?: Array<{ key?: { remoteJid?: string } }> } };
+    const jid = data?.messages?.records?.[0]?.key?.remoteJid;
+    return typeof jid === "string" && jid.endsWith("@lid") ? jid : cleanPhone;
+  } catch {
+    return cleanPhone;
+  }
+}
+
 async function sendEvolutionText(phone: string, text: string) {
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
@@ -300,10 +329,11 @@ async function sendEvolutionText(phone: string, text: string) {
   const cleanPhone = phone.replace(/\D/g, "");
   if (!apiUrl || !apiKey || !cleanPhone) return false;
 
+  const destino = await resolverDestinoWhatsapp(cleanPhone);
   const response = await fetch(`${apiUrl}/message/sendText/${instance}`, {
     method: "POST",
     headers: { apikey: apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ number: cleanPhone, text }),
+    body: JSON.stringify({ number: destino, text }),
     cache: "no-store",
   });
 
@@ -312,6 +342,27 @@ async function sendEvolutionText(phone: string, text: string) {
 
 function crmLeadUrl(leadId: string) {
   return `${crmConfig().publicUrl}${buildCrmUrl({ view: "chats", lead: leadId })}`;
+}
+
+/** Un representante escribe al cliente desde el CRM. Queda registrado en el historial. */
+async function enviarMensajeManualAction(formData: FormData) {
+  "use server";
+  const phone = String(formData.get("customer_phone") || "").replace(/[^0-9]/g, "");
+  const texto = String(formData.get("mensaje") || "").trim().slice(0, 1000);
+  if (!phone || !texto) return;
+
+  const enviado = await sendEvolutionText(phone, texto);
+  // Se registra igual que la respuesta del bot, pero marcado como enviado por una
+  // persona, para que el historial del CRM refleje la conversacion completa.
+  await supabaseInsert("docs_conversations", {
+    tenant_key: tenantKey(),
+    project_key: "general",
+    customer_phone: phone,
+    direction: "outbound",
+    message_text: enviado ? texto : `[NO SE PUDO ENVIAR] ${texto}`,
+    payload: { source: "crm_manual", enviado },
+  });
+  revalidatePath("/crm");
 }
 
 async function assignVendorAction(formData: FormData) {
@@ -1308,6 +1359,25 @@ export default async function CrmPage({
                 </div>
               )}
             </div>
+
+            {activePhone && (
+              <form className={styles.replyBar} action={enviarMensajeManualAction}>
+                <input type="hidden" name="customer_phone" value={activePhone} />
+                <input
+                  className={styles.replyInput}
+                  name="mensaje"
+                  placeholder={
+                    globalBotPaused || phoneBotPaused
+                      ? "Escribile como asesor..."
+                      : "Escribile como asesor (ojo: el bot sigue activo y tambien puede responder)"
+                  }
+                  maxLength={1000}
+                  autoComplete="off"
+                  required
+                />
+                <button className={styles.replySend} type="submit">Enviar</button>
+              </form>
+            )}
           </section>
 
           <aside className={styles.leadPanel}>
