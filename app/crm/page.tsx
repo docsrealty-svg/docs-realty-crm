@@ -767,9 +767,8 @@ async function seedIntegralDemoAction() {
 async function toggleGlobalBotAction(formData: FormData) {
   "use server";
   const current = String(formData.get("paused") || "") === "true";
-  await supabaseUpsert("docs_bot_controls", { tenant_key: tenantKey(), scope: "global", customer_phone: "*", paused: !current, reason: !current ? "Pausado desde CRM" : "Reactivado desde CRM", updated_by: "crm", updated_at: new Date().toISOString() });
+  await supabaseUpsert("docs_bot_controls", { tenant_key: tenantKey(), scope: "global", customer_phone: "*", paused: !current, reason: !current ? "Pausado desde CRM" : "Reactivado desde CRM", updated_at: new Date().toISOString() });
   revalidatePath("/crm");
-  redirect(buildCrmUrl({ view: "config" }));
 }
 
 async function togglePhoneBotAction(formData: FormData) {
@@ -777,7 +776,7 @@ async function togglePhoneBotAction(formData: FormData) {
   const phone = String(formData.get("customer_phone") || "").trim();
   const current = String(formData.get("paused") || "") === "true";
   if (!phone) return;
-  await supabaseUpsert("docs_bot_controls", { tenant_key: tenantKey(), scope: "phone", customer_phone: phone, paused: !current, reason: !current ? "Pausado por operador CRM" : "Reactivado por operador CRM", updated_by: "crm", updated_at: new Date().toISOString() });
+  await supabaseUpsert("docs_bot_controls", { tenant_key: tenantKey(), scope: "phone", customer_phone: phone, paused: !current, reason: !current ? "Pausado por operador CRM" : "Reactivado por operador CRM", updated_at: new Date().toISOString() });
   revalidatePath("/crm");
   redirect(buildCrmUrl({ view: "chats", phone }));
 }
@@ -1301,7 +1300,7 @@ export default async function CrmPage({
                 <h2>{activeLead ? displayName(activeLead) : activePhone ? activePhone : "Sin lead seleccionado"}</h2>
                 <p>
                   {activeLead
-                    ? `${stageName(activeLead.stage)} - WhatsApp - ${activeLead.assigned_vendor || "sin vendedor"}`
+                    ? `${stageName(activeLead.stage)} - WhatsApp - ${activeLead.assigned_vendor || "sin vendedor"}${phoneBotPaused ? " - BOT PAUSADO" : ""}`
                     : activePhone
                       ? "Evento WhatsApp todavia no convertido a lead"
                       : "Esperando consultas reales desde WhatsApp"}
@@ -1323,9 +1322,13 @@ export default async function CrmPage({
               <span className={styles.dayPill}>{activeLead ? "Conversacion CRM" : "Eventos WhatsApp"}</span>
               {/* Si un hilo no tiene respuestas, decimos por que en vez de dejarlo mudo. */}
               {(globalBotPaused || phoneBotPaused) && (
-                <div className={styles.emptyState}>
-                  <strong>{globalBotPaused ? "El bot global esta pausado" : "El bot esta pausado para este numero"}</strong>
-                  <p>No va a responder hasta que lo reactives con el boton de arriba.</p>
+                <div className={styles.pausedBanner}>
+                  <strong>{globalBotPaused ? "BOT GLOBAL PAUSADO" : "BOT PAUSADO PARA ESTE NUMERO"}</strong>
+                  <span>
+                    {globalBotPaused
+                      ? "No responde a NINGUN contacto. Se reactiva con el boton de arriba a la derecha."
+                      : "No le responde a este contacto. Escribile vos desde abajo o reactivalo con el boton de arriba."}
+                  </span>
                 </div>
               )}
               {conversations.length > 0 && !conversations.some((m) => m.direction === "outbound") && (
